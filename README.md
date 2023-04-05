@@ -75,3 +75,11 @@ Contributions are welcome! If you find a bug or have a feature request, please o
 ## License
 
 `PrismCommands.Fody` is licensed under the [MIT License](https://github.com/vitkuz573/PrismCommands.Fody/blob/main/LICENSE).
+
+## Contributors
+
+The following individuals have contributed to the development and maintenance of `PrismCommands.Fody`:
+
+- Vitaly Kuzyaev ([@vitkuz573](https://github.com/vitkuz573)): *Developer of the plugin.* Implemented the core functionality of the plugin, wrote the initial codebase, and provided ongoing maintenance and support.
+- OpenAI ChatGPT (@openai/chatgpt): *Provided assistance with code development and readme composition.* Helped with code review, testing, and provided feedback and suggestions for improving the documentation and user experience.
+
