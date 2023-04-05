@@ -65,12 +65,7 @@ public class ModuleWeaver : BaseModuleWeaver
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
         var ilCtor = ctor.Body.GetILProcessor();
-        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret);
-
-        if (lastRetInstruction == null)
-        {
-            throw new WeavingException("Constructor does not have a return instruction (ret).");
-        }
+        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException("Constructor does not have a return instruction (ret).");
         
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Nop));
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Ldarg_0));

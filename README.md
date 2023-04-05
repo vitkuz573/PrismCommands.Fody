@@ -1,6 +1,6 @@
 # PrismCommands.Fody
 
-`PrismCommands.Fody` is a [Fody](https://github.com/Fody/Fody) plugin that provides a simple way to replace methods with Prism DelegateCommand properties at compile time. 
+`PrismCommands.Fody` is a [Fody](https://github.com/Fody/Fody) plugin that provides a simple way to replace methods with Prism DelegateCommand properties at compile time.
 
 This is useful when using the [Prism](https://github.com/PrismLibrary/Prism) library to build applications with the Model-View-ViewModel (MVVM) architecture. DelegateCommand is a class provided by Prism that implements the ICommand interface and allows you to bind a command from the view to a method in the view model.
 
@@ -20,37 +20,50 @@ public class MyViewModel
     {
         // Do something here.
     }
+
+    [DelegateCommand]
+    public void DoSomethingWithArg(string arg)
+    {
+        // Do something with arg here.
+    }
 }
 ```
 
 After building, each method marked with the `[DelegateCommand]` attribute will be replaced with a corresponding `DelegateCommand` property named using the "{MethodName}Command" pattern.
 
-For example, if you have a `MyViewModel` class with a method named `DoSomething` marked with the `[DelegateCommand]` attribute, after building, this method will be replaced with a property named `DoSomethingCommand`.
+For example, if you have a `MyViewModel` class with methods named `DoSomething` and `DoSomethingWithArg` marked with the `[DelegateCommand]` attribute, after building, these methods will be replaced with properties named `DoSomethingCommand` and `DoSomethingWithArgCommand`.
 
 ```csharp
 public class MyViewModel
 {
-    public DelegateCommand DoSomethingCommand { get; private set; }
+    public DelegateCommand DoSomethingCommand { get; }
+    public DelegateCommand<string> DoSomethingWithArgCommand { get; }
 
     public MyViewModel()
     {
         DoSomethingCommand = new DelegateCommand(DoSomething);
+        DoSomethingWithArgCommand = new DelegateCommand<string>(DoSomethingWithArg);
     }
 
     private void DoSomething()
     {
         // Do something here.
     }
+
+    private void DoSomethingWithArg(string arg)
+    {
+        // Do something with arg here.
+    }
 }
 ```
 
-Thus, you can use the `DoSomethingCommand` property to bind the command to the view.
+Thus, you can use the `DoSomethingCommand` and `DoSomethingWithArgCommand` properties to bind the commands to the view.
 
 Note that if you have a method with a name that matches the property name created by `PrismCommands.Fody`, this can lead to conflicts and build errors. To avoid this, avoid using strings in method names that match the "Command" string.
 
 ## How it works
 
-`PrismCommands.Fody` uses the Mono.Cecil library to modify the assembly at compile time. It scans the assembly for methods with the `[DelegateCommand]` attribute and replaces them with DelegateCommand properties. 
+`PrismCommands.Fody` uses the Mono.Cecil library to modify the assembly at compile time. It scans the assembly for methods with the `[DelegateCommand]` attribute and replaces them with DelegateCommand properties.
 
 The implementation details can be found in the `ModuleWeaver` class.
 
