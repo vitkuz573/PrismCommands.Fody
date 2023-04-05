@@ -7,8 +7,9 @@ This is useful when using the [Prism](https://github.com/PrismLibrary/Prism) lib
 ## Installation
 
 1. Install the `PrismCommands.Fody` NuGet package in your project.
-2. Add a `[DelegateCommand]` attribute to any method in your code that you want to replace with a DelegateCommand property.
-3. Build your project. The methods with the `[DelegateCommand]` attribute will be replaced with DelegateCommand properties.
+2. Add `<PrismCommands />` to your `FodyWeavers.xml` file in the project's root directory. This step is necessary for Fody to enable the `PrismCommands.Fody` plugin during the build process.
+3. Add a `[DelegateCommand]` attribute to any method in your code that you want to replace with a DelegateCommand property.
+4. Build your project. The methods with the `[DelegateCommand]` attribute will be replaced with DelegateCommand properties.
 
 ## Example
 
