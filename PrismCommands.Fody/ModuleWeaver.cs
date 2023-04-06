@@ -27,7 +27,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
-        _delegateCommandType = ImportTypeFromAssembly(DelegateCommandTypeName, PrismAssemblyName);
+        _delegateCommandType = GetDelegateCommandType();
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
         {
@@ -144,14 +144,14 @@ public class ModuleWeaver : BaseModuleWeaver
             : ModuleDefinition.ImportReference(typeDefinition);
     }
 
-    private TypeReference ImportTypeFromAssembly(string typeName, string assemblyName)
+    private TypeReference GetDelegateCommandType()
     {
-        var assembly = ModuleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(assemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{assemblyName}'.");
+        var assembly = ModuleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(PrismAssemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{PrismAssemblyName}'.");
         var module = assembly.MainModule;
-        var typeDefinition = module.GetType(typeName);
+        var type = module.GetType(DelegateCommandTypeName);
 
-        return typeDefinition == null
-            ? throw new WeavingException($"Unable to find type '{typeName}' in assembly '{assemblyName}'.")
-            : ModuleDefinition.ImportReference(typeDefinition);
+        return type == null
+            ? throw new WeavingException($"Unable to find type '{DelegateCommandTypeName}' in assembly '{PrismAssemblyName}'.")
+            : ModuleDefinition.ImportReference(type);
     }
 }
