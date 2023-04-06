@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>net452;netstandard2.0;netstandard2.1</TargetFrameworks>
     <Authors>Vitaly Kuzyaev</Authors>
-    <Copyright>Copyright $([System.DateTime]::UtcNow.ToString(yyyy)).</Copyright>
+    <Copyright>© $([System.DateTime]::UtcNow.ToString(yyyy)) Vitaly Kuzyaev. All rights reserved.</Copyright>
     <Description>Fody plugin to simplify the use of DelegateCommand in Prism</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>Prism, DelegateCommand, ILWeaving, Fody, Cecil, AOP</PackageTags>
@@ -14,6 +14,8 @@
     <AssemblyOriginatorKeyFile>Key.snk</AssemblyOriginatorKeyFile>
     <Version>1.0.6</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/vitkuz573/PrismCommands.Fody</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
