@@ -1,5 +1,7 @@
 # PrismCommands.Fody
 
+[![NuGet Status](https://img.shields.io/nuget/v/PrismCommands.Fody.svg)](https://www.nuget.org/packages/PrismCommands.Fody/)
+
 `PrismCommands.Fody` is a [Fody](https://github.com/Fody/Fody) plugin that provides a simple way to replace methods with Prism DelegateCommand properties at compile time.
 
 This is useful when using the [Prism](https://github.com/PrismLibrary/Prism) library to build applications with the Model-View-ViewModel (MVVM) architecture. DelegateCommand is a class provided by Prism that implements the ICommand interface and allows you to bind a command from the view to a method in the view model.
