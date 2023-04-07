@@ -62,11 +62,21 @@ Thus, you can use the `DoSomethingCommand` and `DoSomethingWithArgCommand` prope
 
 Note that if you have a method with a name that matches the property name created by `PrismCommands.Fody`, this can lead to conflicts and build errors. To avoid this, avoid using strings in method names that match the "Command" string.
 
+## How it works
+
+`PrismCommands.Fody` uses the Mono.Cecil library to modify the assembly at compile time. It scans the assembly for methods with the `[DelegateCommand]` attribute and replaces them with DelegateCommand properties.
+
+The implementation details can be found in the `ModuleWeaver` class.
+
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a feature request, please open an issue. If you want to contribute code, please fork the repository and submit a pull request. 
 
 Please read the [CONTRIBUTING.md](https://github.com/vitkuz573/PrismCommands.Fody/blob/main/CONTRIBUTING.md) file before contributing.
+
+## License
+
+`PrismCommands.Fody` is licensed under the [MIT License](https://github.com/vitkuz573/PrismCommands.Fody/blob/main/LICENSE).
 
 ## Contributors
 
