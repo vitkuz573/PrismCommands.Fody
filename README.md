@@ -70,6 +70,16 @@ Note that if you have a method with a name that matches the property name create
 
 The implementation details can be found in the `ModuleWeaver` class.
 
+## Future Plans
+
+Here are some future plans for `PrismCommands.Fody`:
+
+- [ ] Implement support for `CanExecute` methods. Currently, `PrismCommands.Fody` only supports replacing methods with simple `DelegateCommand` properties. In the future, it would be beneficial to also support methods with `CanExecute` logic. This would require adding an additional attribute, such as `[DelegateCommand(CanExecuteMethodName = "CanExecuteMethod")]`, to specify the name of the `CanExecute` method associated with the `DelegateCommand` property. 
+- [ ] Improve performance and efficiency. As `PrismCommands.Fody` uses the Mono.Cecil library to modify the assembly at compile time, there is some overhead involved in the build process. In the future, we plan to investigate ways to improve the performance and efficiency of the plugin to minimize build times.
+- [ ] Expand documentation and examples. We plan to provide more examples and documentation to help users understand how to use the plugin effectively, as well as showcase some best practices for building Prism applications with the MVVM architecture.
+
+If you have any suggestions or feature requests, feel free to open an issue or contribute to the project!
+
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a feature request, please open an issue. If you want to contribute code, please fork the repository and submit a pull request. 
