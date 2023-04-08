@@ -11,23 +11,20 @@ using System.Runtime.CompilerServices;
 public class ModuleWeaver : BaseModuleWeaver
 {
     private const string DelegateCommandAttributeName = "DelegateCommandAttribute";
-    private const string DelegateCommandTypeName = "Prism.Commands.DelegateCommand";
     private const string CommandBackingFieldNameFormat = "<{0}Command>k__BackingField";
     private const string GetCommandMethodNameFormat = "get_{0}Command";
     private const string CommandMethodNameFormat = "{0}Command";
-    private const string SystemRuntimeAssemblyName = "System.Runtime";
-    private const string PrismAssemblyName = "Prism";
 
     private TypeReference _delegateCommandType;
 
     public override IEnumerable<string> GetAssembliesForScanning()
     {
-        yield return PrismAssemblyName;
+        yield return "Prism";
     }
 
     public override void Execute()
     {
-        _delegateCommandType = GetDelegateCommandType();
+        _delegateCommandType = ImportTypeFromAssembly("Prism.Commands.DelegateCommand", "Prism");
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
         {
@@ -64,9 +61,9 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void ImportAttributesForBackingField(FieldDefinition commandField)
     {
-        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute), SystemRuntimeAssemblyName);
-        var debuggerBrowsableAttributeType = ImportTypeFromAssembly(typeof(DebuggerBrowsableAttribute), SystemRuntimeAssemblyName);
-        var debuggerBrowsableStateType = ImportTypeFromAssembly(typeof(DebuggerBrowsableState), SystemRuntimeAssemblyName);
+        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute).FullName, "System.Runtime");
+        var debuggerBrowsableAttributeType = ImportTypeFromAssembly(typeof(DebuggerBrowsableAttribute).FullName, "System.Runtime");
+        var debuggerBrowsableStateType = ImportTypeFromAssembly(typeof(DebuggerBrowsableState).FullName, "System.Runtime");
 
         var compilerGeneratedAttributeCtor = ModuleDefinition.ImportReference(compilerGeneratedAttributeType.Resolve().GetConstructors().First());
         var debuggerBrowsableAttributeCtor = ModuleDefinition.ImportReference(debuggerBrowsableAttributeType.Resolve().GetConstructors().First());
@@ -86,7 +83,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private MethodDefinition FindDelegateCommandConstructor()
     {
-        return _delegateCommandType.Resolve().Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException("Unable to find DelegateCommand constructor with a single parameter of type Action.");
+        return _delegateCommandType.Resolve().GetConstructors().FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException("Unable to find DelegateCommand constructor with a single parameter of type Action.");
     }
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
@@ -101,7 +98,7 @@ public class ModuleWeaver : BaseModuleWeaver
         il.Emit(OpCodes.Ldfld, commandField);
         il.Emit(OpCodes.Ret);
 
-        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute), SystemRuntimeAssemblyName);
+        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute).FullName, "System.Runtime");
         var compilerGeneratedAttributeCtor = ModuleDefinition.ImportReference(compilerGeneratedAttributeType.Resolve().GetConstructors().First());
         commandProperty.GetMethod.CustomAttributes.Add(new CustomAttribute(compilerGeneratedAttributeCtor));
 
@@ -112,7 +109,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException("Unable to find default constructor in the type.");
 
-        var actionType = ImportTypeFromAssembly(typeof(Action), SystemRuntimeAssemblyName);
+        var actionType = ImportTypeFromAssembly(typeof(Action).FullName, "System.Runtime");
         var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr);
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
@@ -133,25 +130,12 @@ public class ModuleWeaver : BaseModuleWeaver
         method.IsPrivate = true;
     }
 
-    private TypeReference ImportTypeFromAssembly(Type type, string assemblyName)
+    private TypeReference ImportTypeFromAssembly(string type, string assemblyName)
     {
         var assembly = ModuleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(assemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{assemblyName}'.");
         var module = assembly.MainModule;
-        var typeDefinition = module.GetType(type.FullName);
-
-        return typeDefinition == null
-            ? throw new WeavingException($"Unable to find type '{type.FullName}' in assembly '{assemblyName}'.")
-            : ModuleDefinition.ImportReference(typeDefinition);
-    }
-
-    private TypeReference GetDelegateCommandType()
-    {
-        var assembly = ModuleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(PrismAssemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{PrismAssemblyName}'.");
-        var module = assembly.MainModule;
-        var type = module.GetType(DelegateCommandTypeName);
-
-        return type == null
-            ? throw new WeavingException($"Unable to find type '{DelegateCommandTypeName}' in assembly '{PrismAssemblyName}'.")
-            : ModuleDefinition.ImportReference(type);
+        var typeDefinition = module.GetType(type) ?? throw new WeavingException($"Unable to find type '{type}' in assembly '{assemblyName}'.");
+        
+        return ModuleDefinition.ImportReference(typeDefinition);
     }
 }
