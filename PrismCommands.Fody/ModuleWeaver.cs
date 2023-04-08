@@ -31,7 +31,7 @@ public class ModuleWeaver : BaseModuleWeaver
             RemoveDelegateCommandAttribute(method);
 
             var commandField = CreateBackingFieldForCommand(method);
-            ImportAttributesForBackingField(commandField);
+            AddAttributesToBackingField(commandField);
             AddBackingFieldToType(method.DeclaringType, commandField);
 
             var delegateCommandCtor = FindDelegateCommandConstructor();
@@ -59,7 +59,7 @@ public class ModuleWeaver : BaseModuleWeaver
         return new FieldDefinition(commandFieldName, FieldAttributes.Private | FieldAttributes.InitOnly, commandFieldType);
     }
 
-    private void ImportAttributesForBackingField(FieldDefinition commandField)
+    private void AddAttributesToBackingField(FieldDefinition commandField)
     {
         AddAttribute<CompilerGeneratedAttribute>(commandField, "System.Runtime");
         AddAttribute<DebuggerBrowsableAttribute>(commandField, "System.Runtime", DebuggerBrowsableState.Never);
