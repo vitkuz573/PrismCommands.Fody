@@ -61,19 +61,27 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void ImportAttributesForBackingField(FieldDefinition commandField)
     {
-        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute).FullName, "System.Runtime");
-        var debuggerBrowsableAttributeType = ImportTypeFromAssembly(typeof(DebuggerBrowsableAttribute).FullName, "System.Runtime");
-        var debuggerBrowsableStateType = ImportTypeFromAssembly(typeof(DebuggerBrowsableState).FullName, "System.Runtime");
+        AddAttribute<CompilerGeneratedAttribute>(commandField, "System.Runtime");
+        AddAttribute<DebuggerBrowsableAttribute>(commandField, "System.Runtime", DebuggerBrowsableState.Never);
+    }
 
-        var compilerGeneratedAttributeCtor = ModuleDefinition.ImportReference(compilerGeneratedAttributeType.Resolve().GetConstructors().First());
-        var debuggerBrowsableAttributeCtor = ModuleDefinition.ImportReference(debuggerBrowsableAttributeType.Resolve().GetConstructors().First());
+    private void AddAttribute<T>(ICustomAttributeProvider provider, string assemblyName, params object[] constructorArgs) where T : Attribute
+    {
+        var attributeType = typeof(T);
+        var attributeTypeRef = ImportTypeFromAssembly(attributeType.FullName, assemblyName);
+        var ctor = attributeTypeRef.Resolve().GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find a constructor for attribute '{attributeType.FullName}'.");
+        var attribute = new CustomAttribute(ModuleDefinition.ImportReference(ctor));
 
-        var debuggerBrowsableStateNever = new CustomAttributeArgument(debuggerBrowsableStateType, DebuggerBrowsableState.Never);
-        var debuggerBrowsableAttribute = new CustomAttribute(debuggerBrowsableAttributeCtor);
-        debuggerBrowsableAttribute.ConstructorArguments.Add(debuggerBrowsableStateNever);
+        if (constructorArgs?.Length > 0)
+        {
+            foreach (var arg in constructorArgs)
+            {
+                var argType = ImportTypeFromAssembly(arg.GetType().FullName, assemblyName);
+                attribute.ConstructorArguments.Add(new CustomAttributeArgument(ModuleDefinition.ImportReference(argType), arg));
+            }
+        }
 
-        commandField.CustomAttributes.Add(new CustomAttribute(compilerGeneratedAttributeCtor));
-        commandField.CustomAttributes.Add(debuggerBrowsableAttribute);
+        provider.CustomAttributes.Add(attribute);
     }
 
     private void AddBackingFieldToType(TypeDefinition type, FieldDefinition commandField)
@@ -98,9 +106,7 @@ public class ModuleWeaver : BaseModuleWeaver
         il.Emit(OpCodes.Ldfld, commandField);
         il.Emit(OpCodes.Ret);
 
-        var compilerGeneratedAttributeType = ImportTypeFromAssembly(typeof(CompilerGeneratedAttribute).FullName, "System.Runtime");
-        var compilerGeneratedAttributeCtor = ModuleDefinition.ImportReference(compilerGeneratedAttributeType.Resolve().GetConstructors().First());
-        commandProperty.GetMethod.CustomAttributes.Add(new CustomAttribute(compilerGeneratedAttributeCtor));
+        AddAttribute<CompilerGeneratedAttribute>(commandProperty.GetMethod, "System.Runtime");
 
         return commandProperty;
     }
