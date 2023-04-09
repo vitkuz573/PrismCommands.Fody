@@ -47,7 +47,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void RemoveDelegateCommandAttribute(MethodDefinition method)
     {
-        var attribute = method.CustomAttributes.FirstOrDefault(a => a.AttributeType.Name == DelegateCommandAttributeName) ?? throw new WeavingException($"Method '{method.Name}' does not have a '{DelegateCommandAttributeName}' attribute.");
+        var attribute = method.CustomAttributes.FirstOrDefault(a => a.AttributeType.Name == DelegateCommandAttributeName) ?? throw new WeavingException($"Method '{method.FullName}' does not have a '{DelegateCommandAttributeName}' attribute.");
         method.CustomAttributes.Remove(attribute);
     }
 
@@ -91,7 +91,9 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private MethodDefinition FindDelegateCommandConstructor()
     {
-        return _delegateCommandType.Resolve().GetConstructors().FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException("Unable to find DelegateCommand constructor with a single parameter of type Action.");
+        var delegateCommandConstructors = _delegateCommandType.Resolve().GetConstructors();
+
+        return delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException("Unable to find DelegateCommand constructor with a single parameter of type Action. Available constructors: " + string.Join(", ", delegateCommandConstructors.Select(c => c.ToString())));
     }
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
@@ -113,14 +115,14 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor)
     {
-        var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException("Unable to find default constructor in the type.");
+        var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find default constructor in the type '{type.FullName}'.");
 
         var actionType = ImportTypeFromAssembly(typeof(Action).FullName, "System.Runtime");
-        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr);
+        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Action constructor with two parameters in the type '{actionType.FullName}'.");
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
         var ilCtor = ctor.Body.GetILProcessor();
-        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException("Constructor does not have a return instruction (ret).");
+        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"Constructor '{ctor.FullName}' does not have a return instruction (ret).");
 
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Nop));
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Ldarg_0));
@@ -130,7 +132,7 @@ public class ModuleWeaver : BaseModuleWeaver
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)));
         ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Stfld, commandField));
     }
-
+    
     private void MakeMethodPrivate(MethodDefinition method)
     {
         method.IsPrivate = true;
