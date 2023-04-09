@@ -12,7 +12,7 @@ public class ModuleWeaver : BaseModuleWeaver
 {
     private const string DelegateCommandAttributeName = "DelegateCommandAttribute";
     private const string CommandBackingFieldNameFormat = "<{0}Command>k__BackingField";
-    private const string GetCommandMethodNameFormat = "get_{0}Command";
+    private const string GetCommandMethodNameFormat = "get_{0}";
     private const string CommandMethodNameFormat = "{0}Command";
 
     private TypeReference _delegateCommandType;
@@ -98,15 +98,24 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
     {
-        var commandProperty = new PropertyDefinition(string.Format(CommandMethodNameFormat, method.Name), PropertyAttributes.None, commandField.FieldType)
-        {
-            GetMethod = new MethodDefinition(string.Format(GetCommandMethodNameFormat, method.Name), MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, commandField.FieldType)
-        };
+        var commandMethodName = string.Format(CommandMethodNameFormat, method.Name);
+        var getCommandMethodName = string.Format(GetCommandMethodNameFormat, commandMethodName);
 
-        var il = commandProperty.GetMethod.Body.GetILProcessor();
-        il.Emit(OpCodes.Ldarg_0);
-        il.Emit(OpCodes.Ldfld, commandField);
-        il.Emit(OpCodes.Ret);
+        var commandProperty = new PropertyDefinition(commandMethodName, PropertyAttributes.None, commandField.FieldType)
+        {
+            GetMethod = new MethodDefinition(getCommandMethodName, MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.HideBySig, commandField.FieldType)
+            {
+                Body =
+                {
+                    Instructions =
+                    {
+                        Instruction.Create(OpCodes.Ldarg_0),
+                        Instruction.Create(OpCodes.Ldfld, commandField),
+                        Instruction.Create(OpCodes.Ret)
+                    }
+                }
+            }
+        };
 
         AddAttribute<CompilerGeneratedAttribute>(commandProperty.GetMethod, "System.Runtime");
 
@@ -124,15 +133,23 @@ public class ModuleWeaver : BaseModuleWeaver
         var ilCtor = ctor.Body.GetILProcessor();
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"Constructor '{ctor.FullName}' does not have a return instruction (ret).");
 
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Nop));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Ldarg_0));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Ldarg_0));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Ldftn, method));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Newobj, actionConstructor));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)));
-        ilCtor.InsertBefore(lastRetInstruction, ilCtor.Create(OpCodes.Stfld, commandField));
+        var instructions = new[]
+        {
+            Instruction.Create(OpCodes.Nop),
+            Instruction.Create(OpCodes.Ldarg_0),
+            Instruction.Create(OpCodes.Ldarg_0),
+            Instruction.Create(OpCodes.Ldftn, method),
+            Instruction.Create(OpCodes.Newobj, actionConstructor),
+            Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
+            Instruction.Create(OpCodes.Stfld, commandField)
+        };
+
+        foreach (var instruction in instructions)
+        {
+            ilCtor.InsertBefore(lastRetInstruction, instruction);
+        }
     }
-    
+
     private void MakeMethodPrivate(MethodDefinition method)
     {
         method.IsPrivate = true;
