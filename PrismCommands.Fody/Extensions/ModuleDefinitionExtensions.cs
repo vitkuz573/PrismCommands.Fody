@@ -3,7 +3,7 @@ using Mono.Cecil;
 
 namespace PrismCommands.Fody.Extensions;
 
-public static class ModuleDefinitionExtension
+public static class ModuleDefinitionExtensions
 {
     public static TypeReference ImportReference(this ModuleDefinition moduleDefinition, string type, string assemblyName)
     {
