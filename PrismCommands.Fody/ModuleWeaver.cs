@@ -2,6 +2,7 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
+using PrismCommands.Fody.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -24,7 +25,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
-        _delegateCommandType = ImportTypeFromAssembly("Prism.Commands.DelegateCommand", "Prism");
+        _delegateCommandType = ModuleDefinition.ImportTypeFromAssembly("Prism.Commands.DelegateCommand", "Prism");
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
         {
@@ -61,27 +62,8 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void AddAttributesToBackingField(FieldDefinition commandField)
     {
-        AddAttribute<CompilerGeneratedAttribute>(commandField, "System.Runtime");
-        AddAttribute<DebuggerBrowsableAttribute>(commandField, "System.Runtime", DebuggerBrowsableState.Never);
-    }
-
-    private void AddAttribute<T>(ICustomAttributeProvider provider, string assemblyName, params object[] constructorArgs) where T : Attribute
-    {
-        var attributeType = typeof(T);
-        var attributeTypeRef = ImportTypeFromAssembly(attributeType.FullName, assemblyName);
-        var ctor = attributeTypeRef.Resolve().GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find a constructor for attribute '{attributeType.FullName}'.");
-        var attribute = new CustomAttribute(ModuleDefinition.ImportReference(ctor));
-
-        if (constructorArgs?.Length > 0)
-        {
-            foreach (var arg in constructorArgs)
-            {
-                var argType = ImportTypeFromAssembly(arg.GetType().FullName, assemblyName);
-                attribute.ConstructorArguments.Add(new CustomAttributeArgument(ModuleDefinition.ImportReference(argType), arg));
-            }
-        }
-
-        provider.CustomAttributes.Add(attribute);
+        commandField.AddAttribute<CompilerGeneratedAttribute>(ModuleDefinition, "System.Runtime");
+        commandField.AddAttribute<DebuggerBrowsableAttribute>(ModuleDefinition, "System.Runtime", DebuggerBrowsableState.Never);
     }
 
     private void AddBackingFieldToType(TypeDefinition type, FieldDefinition commandField)
@@ -93,7 +75,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         var delegateCommandConstructors = _delegateCommandType.Resolve().GetConstructors();
 
-        return delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException("Unable to find DelegateCommand constructor with a single parameter of type Action. Available constructors: " + string.Join(", ", delegateCommandConstructors.Select(c => c.ToString())));
+        return delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException($"Unable to find DelegateCommand constructor with a single parameter of type Action. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
     }
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
@@ -117,7 +99,7 @@ public class ModuleWeaver : BaseModuleWeaver
             }
         };
 
-        AddAttribute<CompilerGeneratedAttribute>(commandProperty.GetMethod, "System.Runtime");
+        commandProperty.GetMethod.AddAttribute<CompilerGeneratedAttribute>(ModuleDefinition, "System.Runtime");
 
         return commandProperty;
     }
@@ -126,7 +108,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find default constructor in the type '{type.FullName}'.");
 
-        var actionType = ImportTypeFromAssembly(typeof(Action).FullName, "System.Runtime");
+        var actionType = ModuleDefinition.ImportTypeFromAssembly(typeof(Action).FullName, "System.Runtime");
         var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Action constructor with two parameters in the type '{actionType.FullName}'.");
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
@@ -153,14 +135,5 @@ public class ModuleWeaver : BaseModuleWeaver
     private void MakeMethodPrivate(MethodDefinition method)
     {
         method.IsPrivate = true;
-    }
-
-    private TypeReference ImportTypeFromAssembly(string type, string assemblyName)
-    {
-        var assembly = ModuleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(assemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{assemblyName}'.");
-        var module = assembly.MainModule;
-        var typeDefinition = module.GetType(type) ?? throw new WeavingException($"Unable to find type '{type}' in assembly '{assemblyName}'.");
-        
-        return ModuleDefinition.ImportReference(typeDefinition);
     }
 }
