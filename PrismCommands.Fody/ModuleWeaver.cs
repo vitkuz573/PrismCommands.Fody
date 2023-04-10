@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 public class ModuleWeaver : BaseModuleWeaver
 {
     private const string DelegateCommandAttributeName = "DelegateCommandAttribute";
-    private const string CommandBackingFieldNameFormat = "<{0}Command>k__BackingField";
+    private const string CommandBackingFieldNameFormat = "<{0}>k__BackingField";
     private const string GetCommandMethodNameFormat = "get_{0}";
     private const string CommandMethodNameFormat = "{0}Command";
 
@@ -54,7 +54,8 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private FieldDefinition CreateBackingFieldForCommand(MethodDefinition method)
     {
-        var commandFieldName = string.Format(CommandBackingFieldNameFormat, method.Name);
+        var commandMethodName = string.Format(CommandMethodNameFormat, method.Name);
+        var commandFieldName = string.Format(CommandBackingFieldNameFormat, commandMethodName);
         var commandFieldType = _delegateCommandType;
 
         return new FieldDefinition(commandFieldName, FieldAttributes.Private | FieldAttributes.InitOnly, commandFieldType);
