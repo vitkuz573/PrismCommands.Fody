@@ -35,15 +35,32 @@ public class ModuleWeaver : BaseModuleWeaver
             AddAttributesToBackingField(commandField);
             AddBackingFieldToType(method.DeclaringType, commandField);
 
-            var delegateCommandCtor = FindDelegateCommandConstructor();
-            var commandProperty = CreateCommandProperty(method, commandField);
+            var canExecuteMethod = FindCanExecuteMethod(method);
 
-            UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor);
+            MethodDefinition delegateCommandCtor;
+
+            if (canExecuteMethod != null)
+            {
+                delegateCommandCtor = FindDelegateCommandConstructor(true);
+            }
+            else
+            {
+                delegateCommandCtor = FindDelegateCommandConstructor(false);
+            }
+
+            var commandProperty = CreateCommandProperty(method, commandField);
+            
+            UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
 
             method.DeclaringType.Properties.Add(commandProperty);
             method.DeclaringType.Methods.Add(commandProperty.GetMethod);
             MakeMethodPrivate(method);
         }
+    }
+
+    private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
+    {
+        return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == $"Can{method.Name}" && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
     }
 
     private void RemoveDelegateCommandAttribute(MethodDefinition method)
@@ -72,11 +89,39 @@ public class ModuleWeaver : BaseModuleWeaver
         type.Fields.Add(commandField);
     }
 
-    private MethodDefinition FindDelegateCommandConstructor()
+    private MethodDefinition FindDelegateCommandConstructor(bool hasCanExecuteMethod)
     {
         var delegateCommandConstructors = _delegateCommandType.Resolve().GetConstructors();
+        
+        MethodDefinition delegateCommandCtor;
 
-        return delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && m.Parameters[0].ParameterType.FullName == typeof(Action).FullName) ?? throw new WeavingException($"Unable to find DelegateCommand constructor with a single parameter of type Action. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
+        if (hasCanExecuteMethod)
+        {
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 2);
+        }
+        else
+        {
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 &&
+                                     m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
+        }
+
+        if (delegateCommandCtor == null)
+        {
+            throw new WeavingException($"Unable to find DelegateCommand constructor {(hasCanExecuteMethod ? "with two parameters of types Action and Func`1<Boolean>" : "with a single parameter of type Action")}. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
+        }
+
+        return delegateCommandCtor;
+    }
+
+    private bool IsFuncOfBool(TypeReference type)
+    {
+        if (type.IsGenericInstance && type.FullName.StartsWith("System.Func`1"))
+        {
+            var genericInstanceType = (GenericInstanceType)type;
+            return genericInstanceType.GenericArguments[0].FullName == "System.Boolean";
+        }
+
+        return false;
     }
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
@@ -105,7 +150,7 @@ public class ModuleWeaver : BaseModuleWeaver
         return commandProperty;
     }
 
-    private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor)
+    private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor, MethodDefinition canExecuteMethod = null)
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find default constructor in the type '{type.FullName}'.");
 
@@ -116,16 +161,41 @@ public class ModuleWeaver : BaseModuleWeaver
         var ilCtor = ctor.Body.GetILProcessor();
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"Constructor '{ctor.FullName}' does not have a return instruction (ret).");
 
-        var instructions = new[]
+        Instruction[] instructions;
+
+        if (canExecuteMethod != null)
         {
-            Instruction.Create(OpCodes.Nop),
-            Instruction.Create(OpCodes.Ldarg_0),
-            Instruction.Create(OpCodes.Ldarg_0),
-            Instruction.Create(OpCodes.Ldftn, method),
-            Instruction.Create(OpCodes.Newobj, actionConstructor),
-            Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
-            Instruction.Create(OpCodes.Stfld, commandField)
-        };
+            var funcBoolType = ModuleDefinition.ImportReference(typeof(Func<bool>).GetGenericTypeDefinition().MakeGenericType(typeof(bool)));
+            var funcBoolConstructorInfo = funcBoolType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<bool> constructor with two parameters in the type '{funcBoolType.FullName}'.");
+            var funcBoolConstructor = ModuleDefinition.ImportReference(funcBoolConstructorInfo);
+
+            instructions = new[]
+            {
+                Instruction.Create(OpCodes.Nop),
+                Instruction.Create(OpCodes.Ldarg_0),
+                Instruction.Create(OpCodes.Ldarg_0),
+                Instruction.Create(OpCodes.Ldftn, method),
+                Instruction.Create(OpCodes.Newobj, actionConstructor),
+                Instruction.Create(OpCodes.Ldarg_0),
+                Instruction.Create(OpCodes.Ldftn, canExecuteMethod),
+                Instruction.Create(OpCodes.Newobj, funcBoolConstructor),
+                Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
+                Instruction.Create(OpCodes.Stfld, commandField)
+            };
+        }
+        else
+        {
+            instructions = new[]
+            {
+                Instruction.Create(OpCodes.Nop),
+                Instruction.Create(OpCodes.Ldarg_0),
+                Instruction.Create(OpCodes.Ldarg_0),
+                Instruction.Create(OpCodes.Ldftn, method),
+                Instruction.Create(OpCodes.Newobj, actionConstructor),
+                Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
+                Instruction.Create(OpCodes.Stfld, commandField)
+            };
+        }
 
         foreach (var instruction in instructions)
         {
