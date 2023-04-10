@@ -113,17 +113,6 @@ public class ModuleWeaver : BaseModuleWeaver
         return delegateCommandCtor;
     }
 
-    private bool IsFuncOfBool(TypeReference type)
-    {
-        if (type.IsGenericInstance && type.FullName.StartsWith("System.Func`1"))
-        {
-            var genericInstanceType = (GenericInstanceType)type;
-            return genericInstanceType.GenericArguments[0].FullName == "System.Boolean";
-        }
-
-        return false;
-    }
-
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
     {
         var commandMethodName = string.Format(CommandMethodNameFormat, method.Name);
@@ -165,9 +154,24 @@ public class ModuleWeaver : BaseModuleWeaver
 
         if (canExecuteMethod != null)
         {
-            var funcBoolType = ModuleDefinition.ImportReference(typeof(Func<bool>).GetGenericTypeDefinition().MakeGenericType(typeof(bool)));
-            var funcBoolConstructorInfo = funcBoolType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<bool> constructor with two parameters in the type '{funcBoolType.FullName}'.");
-            var funcBoolConstructor = ModuleDefinition.ImportReference(funcBoolConstructorInfo);
+            var openFuncType = ModuleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
+            var boolType = ModuleDefinition.TypeSystem.Boolean;
+            var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
+            var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'.");
+            
+            var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
+            {
+                CallingConvention = openFuncConstructorInfo.CallingConvention,
+                HasThis = openFuncConstructorInfo.HasThis,
+                ExplicitThis = openFuncConstructorInfo.ExplicitThis
+            };
+
+            foreach (var parameter in openFuncConstructorInfo.Parameters)
+            {
+                closedFuncConstructorInfo.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+            }
+
+            var funcConstructor = ModuleDefinition.ImportReference(closedFuncConstructorInfo);
 
             instructions = new[]
             {
@@ -178,7 +182,7 @@ public class ModuleWeaver : BaseModuleWeaver
                 Instruction.Create(OpCodes.Newobj, actionConstructor),
                 Instruction.Create(OpCodes.Ldarg_0),
                 Instruction.Create(OpCodes.Ldftn, canExecuteMethod),
-                Instruction.Create(OpCodes.Newobj, funcBoolConstructor),
+                Instruction.Create(OpCodes.Newobj, funcConstructor),
                 Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
                 Instruction.Create(OpCodes.Stfld, commandField)
             };
