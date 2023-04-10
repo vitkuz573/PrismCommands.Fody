@@ -68,7 +68,7 @@ Note that if you have a method with a name that matches the property name create
 
 `PrismCommands.Fody` uses the Mono.Cecil library to modify the assembly at compile time. It scans the assembly for methods with the `[DelegateCommand]` attribute and replaces them with DelegateCommand properties.
 
-The implementation details can be found in the `ModuleWeaver` class.
+The implementation details can be found in the [`ModuleWeaver`](https://github.com/vitkuz573/PrismCommands.Fody/blob/main/PrismCommands.Fody/ModuleWeaver.cs) class.
 
 ## Future Plans
 
