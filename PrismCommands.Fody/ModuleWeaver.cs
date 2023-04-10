@@ -150,7 +150,11 @@ public class ModuleWeaver : BaseModuleWeaver
         var ilCtor = ctor.Body.GetILProcessor();
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"Constructor '{ctor.FullName}' does not have a return instruction (ret).");
 
-        Instruction[] instructions;
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Nop));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldftn, method));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, actionConstructor));
 
         if (canExecuteMethod != null)
         {
@@ -158,7 +162,7 @@ public class ModuleWeaver : BaseModuleWeaver
             var boolType = ModuleDefinition.TypeSystem.Boolean;
             var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
             var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'.");
-            
+
             var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
             {
                 CallingConvention = openFuncConstructorInfo.CallingConvention,
@@ -173,38 +177,13 @@ public class ModuleWeaver : BaseModuleWeaver
 
             var funcConstructor = ModuleDefinition.ImportReference(closedFuncConstructorInfo);
 
-            instructions = new[]
-            {
-                Instruction.Create(OpCodes.Nop),
-                Instruction.Create(OpCodes.Ldarg_0),
-                Instruction.Create(OpCodes.Ldarg_0),
-                Instruction.Create(OpCodes.Ldftn, method),
-                Instruction.Create(OpCodes.Newobj, actionConstructor),
-                Instruction.Create(OpCodes.Ldarg_0),
-                Instruction.Create(OpCodes.Ldftn, canExecuteMethod),
-                Instruction.Create(OpCodes.Newobj, funcConstructor),
-                Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
-                Instruction.Create(OpCodes.Stfld, commandField)
-            };
-        }
-        else
-        {
-            instructions = new[]
-            {
-                Instruction.Create(OpCodes.Nop),
-                Instruction.Create(OpCodes.Ldarg_0),
-                Instruction.Create(OpCodes.Ldarg_0),
-                Instruction.Create(OpCodes.Ldftn, method),
-                Instruction.Create(OpCodes.Newobj, actionConstructor),
-                Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)),
-                Instruction.Create(OpCodes.Stfld, commandField)
-            };
+            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
+            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldftn, canExecuteMethod));
+            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, funcConstructor));
         }
 
-        foreach (var instruction in instructions)
-        {
-            ilCtor.InsertBefore(lastRetInstruction, instruction);
-        }
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Stfld, commandField));
     }
 
     private void MakeMethodPrivate(MethodDefinition method)
