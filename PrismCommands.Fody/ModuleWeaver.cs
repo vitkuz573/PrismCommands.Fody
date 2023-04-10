@@ -136,4 +136,6 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         method.IsPrivate = true;
     }
+
+    public override bool ShouldCleanReference => true;
 }
