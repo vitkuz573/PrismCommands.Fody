@@ -10,16 +10,15 @@ public static class CustomAttributeProviderExtensions
 {
     public static void AddAttribute<T>(this ICustomAttributeProvider provider, ModuleDefinition moduleDefinition, string assemblyName, params object[] constructorArgs) where T : Attribute
     {
-        var attributeType = typeof(T);
-        var attributeTypeRef = moduleDefinition.ImportTypeFromAssembly(attributeType.FullName, assemblyName);
-        var ctor = attributeTypeRef.Resolve().GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find a constructor for attribute '{attributeType.FullName}'.");
+        var attributeType = moduleDefinition.ImportReference(typeof(T).FullName, assemblyName);
+        var ctor = attributeType.Resolve().GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find a constructor for attribute '{attributeType.FullName}'.");
         var attribute = new CustomAttribute(moduleDefinition.ImportReference(ctor));
 
         if (constructorArgs?.Length > 0)
         {
             foreach (var arg in constructorArgs)
             {
-                var argType = moduleDefinition.ImportTypeFromAssembly(arg.GetType().FullName, assemblyName);
+                var argType = moduleDefinition.ImportReference(arg.GetType().FullName, assemblyName);
                 attribute.ConstructorArguments.Add(new CustomAttributeArgument(moduleDefinition.ImportReference(argType), arg));
             }
         }

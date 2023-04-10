@@ -5,7 +5,7 @@ namespace PrismCommands.Fody.Extensions;
 
 public static class ModuleDefinitionExtension
 {
-    public static TypeReference ImportTypeFromAssembly(this ModuleDefinition moduleDefinition, string type, string assemblyName)
+    public static TypeReference ImportReference(this ModuleDefinition moduleDefinition, string type, string assemblyName)
     {
         var assembly = moduleDefinition.AssemblyResolver.Resolve(new AssemblyNameReference(assemblyName, null)) ?? throw new WeavingException($"Unable to find assembly '{assemblyName}'.");
         var module = assembly.MainModule;

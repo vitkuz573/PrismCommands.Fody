@@ -25,7 +25,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
-        _delegateCommandType = ModuleDefinition.ImportTypeFromAssembly("Prism.Commands.DelegateCommand", "Prism");
+        _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
         {
@@ -108,7 +108,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find default constructor in the type '{type.FullName}'.");
 
-        var actionType = ModuleDefinition.ImportTypeFromAssembly(typeof(Action).FullName, "System.Runtime");
+        var actionType = ModuleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
         var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Action constructor with two parameters in the type '{actionType.FullName}'.");
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
