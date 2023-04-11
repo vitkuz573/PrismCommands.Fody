@@ -31,7 +31,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
         if (!_canExecuteMethodPattern.Contains("{0}") || _canExecuteMethodPattern == "{0}" || Regex.IsMatch(_canExecuteMethodPattern, @"\{[1-9]\d*\}"))
         {
-            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder, must not be equal to '{0}', and should not contain any other placeholders like '{1}', '{2}', etc.");
+            throw new WeavingException("The CanExecuteMethodPattern parameter is incorrectly formatted. It must contain the '{0}' placeholder, must not be equal to '{0}', and should not contain any other placeholders like '{1}', '{2}', etc. Please review your configuration and ensure the correct pattern is used.");
         }
 
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
@@ -76,7 +76,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void RemoveDelegateCommandAttribute(MethodDefinition method)
     {
-        var attribute = method.CustomAttributes.FirstOrDefault(a => a.AttributeType.Name == DelegateCommandAttributeName) ?? throw new WeavingException($"Method '{method.FullName}' does not have a '{DelegateCommandAttributeName}' attribute.");
+        var attribute = method.CustomAttributes.FirstOrDefault(a => a.AttributeType.Name == DelegateCommandAttributeName) ?? throw new WeavingException($"The method '{method.FullName}' is missing the required '{DelegateCommandAttributeName}' attribute. Please ensure that the attribute is applied to the method.");
         method.CustomAttributes.Remove(attribute);
     }
 
@@ -152,14 +152,14 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor, MethodDefinition canExecuteMethod = null)
     {
-        var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find default constructor in the type '{type.FullName}'.");
+        var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Failed to find or generate a default constructor for the type '{type.FullName}'. This is an unexpected error. Please ensure the proper project setup and verify the generated code.");
 
         var actionType = ModuleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
-        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Action constructor with two parameters in the type '{actionType.FullName}'.");
+        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
         var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
 
         var ilCtor = ctor.Body.GetILProcessor();
-        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"Constructor '{ctor.FullName}' does not have a return instruction (ret).");
+        var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"The constructor '{ctor.FullName}' is missing a return instruction (ret). Please verify the constructor implementation to ensure proper weaving.");
 
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Nop));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
