@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 
 public class ModuleWeaver : BaseModuleWeaver
 {
@@ -28,9 +29,9 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         _canExecuteMethodPattern = Config.Attribute("CanExecuteMethodPattern")?.Value ?? "Can{0}";
 
-        if (!_canExecuteMethodPattern.Contains("{0}") || _canExecuteMethodPattern == "{0}")
+        if (!_canExecuteMethodPattern.Contains("{0}") || _canExecuteMethodPattern == "{0}" || Regex.IsMatch(_canExecuteMethodPattern, @"\{[1-9]\d*\}"))
         {
-            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder and must not be equal to '{0}'.");
+            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder, must not be equal to '{0}', and should not contain any other placeholders like '{1}', '{2}', etc.");
         }
 
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
