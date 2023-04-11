@@ -28,9 +28,9 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         _canExecuteMethodPattern = Config.Attribute("CanExecuteMethodPattern")?.Value ?? "Can{0}";
 
-        if (!_canExecuteMethodPattern.Contains("{0}"))
+        if (!_canExecuteMethodPattern.Contains("{0}") || _canExecuteMethodPattern == "{0}")
         {
-            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder.");
+            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder and must not be equal to '{0}'.");
         }
 
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
