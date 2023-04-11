@@ -16,6 +16,7 @@ public class ModuleWeaver : BaseModuleWeaver
     private const string GetCommandMethodNameFormat = "get_{0}";
     private const string CommandMethodNameFormat = "{0}Command";
 
+    private string _canExecuteMethodPattern;
     private TypeReference _delegateCommandType;
 
     public override IEnumerable<string> GetAssembliesForScanning()
@@ -25,6 +26,13 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
+        _canExecuteMethodPattern = Config.Attribute("CanExecuteMethodPattern")?.Value ?? "Can{0}";
+
+        if (!_canExecuteMethodPattern.Contains("{0}"))
+        {
+            throw new WeavingException("The CanExecuteMethodPattern parameter must contain the '{0}' placeholder.");
+        }
+
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
@@ -60,7 +68,9 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
     {
-        return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == $"Can{method.Name}" && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
+        var canExecuteMethodName = string.Format(_canExecuteMethodPattern, method.Name);
+        
+        return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == canExecuteMethodName && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
     }
 
     private void RemoveDelegateCommandAttribute(MethodDefinition method)

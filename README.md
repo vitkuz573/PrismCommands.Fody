@@ -68,6 +68,14 @@ Note that if you have a method with a name that matches the property name create
 
 `PrismCommands.Fody` also supports `CanExecute` methods for DelegateCommands. To use this feature, create a private method that returns a boolean value and follows the naming convention `Can{CommandMethodName}`. For example, if your command method is named `DoSomething`, the corresponding `CanExecute` method should be named `CanDoSomething`. The plugin will automatically detect the method if it follows this naming convention.
 
+You can customize the naming pattern for `CanExecute` methods by adding the `CanExecuteMethodPattern` attribute to your `FodyWeavers.xml` file.
+
+For example, to change the pattern to `Is{CommandMethodName}Allowed`, add the following line to your `FodyWeavers.xml` file:
+
+```xml
+<PrismCommands CanExecuteMethodPattern="Is{0}Allowed" />
+```
+
 Here's an example of how to use the `CanExecute` method feature:
 
 ```csharp
