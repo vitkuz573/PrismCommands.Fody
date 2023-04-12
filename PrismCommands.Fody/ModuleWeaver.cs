@@ -58,7 +58,7 @@ public class ModuleWeaver : BaseModuleWeaver
             }
 
             var commandProperty = CreateCommandProperty(method, commandField);
-            
+
             UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
 
             method.DeclaringType.Properties.Add(commandProperty);
@@ -70,7 +70,7 @@ public class ModuleWeaver : BaseModuleWeaver
     private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
     {
         var canExecuteMethodName = string.Format(_canExecuteMethodPattern, method.Name);
-        
+
         return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == canExecuteMethodName && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
     }
 
@@ -118,7 +118,7 @@ public class ModuleWeaver : BaseModuleWeaver
         }
         else
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && 
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 &&
                 m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
         }
 
