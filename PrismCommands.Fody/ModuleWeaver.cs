@@ -69,11 +69,6 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private bool IsValidMethodPattern(string pattern)
     {
-        if (string.IsNullOrEmpty(pattern) || pattern == "{0}" || !pattern.Contains("{0}"))
-        {
-            return false;
-        }
-
         var regex = new Regex(@"^[\p{L}_][\p{L}\p{N}_]*\{0\}[\p{L}\p{N}_]*$", RegexOptions.Compiled);
         
         return regex.IsMatch(pattern);
