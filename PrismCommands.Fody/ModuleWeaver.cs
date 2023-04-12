@@ -103,17 +103,23 @@ public class ModuleWeaver : BaseModuleWeaver
     private MethodDefinition FindDelegateCommandConstructor(bool hasCanExecuteMethod)
     {
         var delegateCommandConstructors = _delegateCommandType.Resolve().GetConstructors();
-        
+
         MethodDefinition delegateCommandCtor;
 
         if (hasCanExecuteMethod)
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 2);
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m =>
+                m.Parameters.Count == 2 &&
+                m.Parameters[0].ParameterType.FullName == typeof(Action).FullName &&
+                m.Parameters[1].ParameterType.IsGenericInstance &&
+                m.Parameters[1].ParameterType.GetElementType().FullName == typeof(Func<>).FullName &&
+                ((GenericInstanceType)m.Parameters[1].ParameterType).GenericArguments[0].MetadataType == MetadataType.Boolean
+            );
         }
         else
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 &&
-                                     m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 && 
+                m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
         }
 
         if (delegateCommandCtor == null)
@@ -153,48 +159,69 @@ public class ModuleWeaver : BaseModuleWeaver
     private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor, MethodDefinition canExecuteMethod = null)
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Failed to find or generate a default constructor for the type '{type.FullName}'. This is an unexpected error. Please ensure the proper project setup and verify the generated code.");
-
-        var actionType = ModuleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
-        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
-        var actionConstructor = ModuleDefinition.ImportReference(actionConstructorInfo);
-
-        var ilCtor = ctor.Body.GetILProcessor();
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"The constructor '{ctor.FullName}' is missing a return instruction (ret). Please verify the constructor implementation to ensure proper weaving.");
+        var ilCtor = ctor.Body.GetILProcessor();
 
+        InsertActionInstructions(ilCtor, lastRetInstruction, method, GetActionConstructor());
+
+        if (canExecuteMethod != null)
+        {
+            InsertFuncInstructions(ilCtor, lastRetInstruction, canExecuteMethod, GetFuncConstructor());
+        }
+
+        InsertDelegateCommandInstructions(ilCtor, lastRetInstruction, commandField, delegateCommandCtor);
+    }
+
+    private void InsertActionInstructions(ILProcessor ilCtor, Instruction lastRetInstruction, MethodDefinition method, MethodReference actionConstructor)
+    {
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Nop));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldftn, method));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, actionConstructor));
+    }
 
-        if (canExecuteMethod != null)
-        {
-            var openFuncType = ModuleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
-            var boolType = ModuleDefinition.TypeSystem.Boolean;
-            var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
-            var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'.");
+    private void InsertFuncInstructions(ILProcessor ilCtor, Instruction lastRetInstruction, MethodDefinition canExecuteMethod, MethodReference funcConstructor)
+    {
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldftn, canExecuteMethod));
+        ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, funcConstructor));
+    }
 
-            var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
-            {
-                CallingConvention = openFuncConstructorInfo.CallingConvention,
-                HasThis = openFuncConstructorInfo.HasThis,
-                ExplicitThis = openFuncConstructorInfo.ExplicitThis
-            };
-
-            foreach (var parameter in openFuncConstructorInfo.Parameters)
-            {
-                closedFuncConstructorInfo.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
-            }
-
-            var funcConstructor = ModuleDefinition.ImportReference(closedFuncConstructorInfo);
-
-            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldarg_0));
-            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Ldftn, canExecuteMethod));
-            ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, funcConstructor));
-        }
-
+    private void InsertDelegateCommandInstructions(ILProcessor ilCtor, Instruction lastRetInstruction, FieldDefinition commandField, MethodDefinition delegateCommandCtor)
+    {
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Stfld, commandField));
+    }
+
+    private MethodReference GetActionConstructor()
+    {
+        var actionType = ModuleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
+        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
+
+        return ModuleDefinition.ImportReference(actionConstructorInfo);
+    }
+
+    private MethodReference GetFuncConstructor()
+    {
+        var openFuncType = ModuleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
+        var boolType = ModuleDefinition.TypeSystem.Boolean;
+        var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
+        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'.");
+
+        var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
+        {
+            CallingConvention = openFuncConstructorInfo.CallingConvention,
+            HasThis = openFuncConstructorInfo.HasThis,
+            ExplicitThis = openFuncConstructorInfo.ExplicitThis
+        };
+
+        foreach (var parameter in openFuncConstructorInfo.Parameters)
+        {
+            closedFuncConstructorInfo.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+        }
+
+        return ModuleDefinition.ImportReference(closedFuncConstructorInfo);
     }
 
     private void MakeMethodPrivate(MethodDefinition method)
