@@ -29,9 +29,9 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         _canExecuteMethodPattern = Config.Attribute("CanExecuteMethodPattern")?.Value ?? "Can{0}";
 
-        if (!_canExecuteMethodPattern.Contains("{0}") || _canExecuteMethodPattern == "{0}" || Regex.IsMatch(_canExecuteMethodPattern, @"\{[1-9]\d*\}"))
+        if (!IsValidMethodPattern(_canExecuteMethodPattern))
         {
-            throw new WeavingException("The CanExecuteMethodPattern parameter is incorrectly formatted. It must contain the '{0}' placeholder, must not be equal to '{0}', and should not contain any other placeholders like '{1}', '{2}', etc. Please review your configuration and ensure the correct pattern is used.");
+            throw new WeavingException($"The CanExecuteMethodPattern parameter '{_canExecuteMethodPattern}' is incorrectly formatted. It must contain the '{{0}}' placeholder, must not be equal to '{{0}}', and should not contain any other placeholders like '{{1}}', '{{2}}', etc. The pattern should also start with a letter or an underscore, followed by any combination of letters, digits, or underscores. Please review your configuration and ensure the correct pattern is used.");
         }
 
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
@@ -65,6 +65,18 @@ public class ModuleWeaver : BaseModuleWeaver
             method.DeclaringType.Methods.Add(commandProperty.GetMethod);
             MakeMethodPrivate(method);
         }
+    }
+
+    private bool IsValidMethodPattern(string pattern)
+    {
+        if (string.IsNullOrEmpty(pattern) || pattern == "{0}" || !pattern.Contains("{0}"))
+        {
+            return false;
+        }
+
+        var regex = new Regex(@"^[\p{L}_][\p{L}\p{N}_]*\{0\}[\p{L}\p{N}_]*$", RegexOptions.Compiled);
+        
+        return regex.IsMatch(pattern);
     }
 
     private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
