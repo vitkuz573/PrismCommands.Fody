@@ -31,7 +31,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
         if (!IsValidMethodPattern(_canExecuteMethodPattern))
         {
-            throw new WeavingException($"The CanExecuteMethodPattern parameter '{_canExecuteMethodPattern}' is incorrectly formatted. It must contain the '{{0}}' placeholder, must not be equal to '{{0}}', and should not contain any other placeholders like '{{1}}', '{{2}}', etc. The pattern should also start with a letter or an underscore, followed by any combination of letters, digits, or underscores. Please review your configuration and ensure the correct pattern is used.");
+            throw new WeavingException($"The CanExecuteMethodPattern parameter '{_canExecuteMethodPattern}' is incorrectly formatted. The pattern should start with a letter or an underscore, followed by any combination of letters, digits, or underscores, and contain the '{{0}}' placeholder exactly once. Please review your configuration and ensure the correct pattern is used.");
         }
 
         _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
@@ -125,7 +125,8 @@ public class ModuleWeaver : BaseModuleWeaver
         }
         else
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => m.Parameters.Count == 1 &&
+            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m =>
+                m.Parameters.Count == 1 &&
                 m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
         }
 
