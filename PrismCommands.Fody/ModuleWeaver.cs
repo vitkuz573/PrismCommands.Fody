@@ -215,7 +215,7 @@ public class ModuleWeaver : BaseModuleWeaver
         var openFuncType = ModuleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
         var boolType = ModuleDefinition.TypeSystem.Boolean;
         var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
-        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'.");
+        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
 
         var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
         {
