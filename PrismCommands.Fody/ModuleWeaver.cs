@@ -2,13 +2,13 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
+using PrismCommands.Fody;
 using PrismCommands.Fody.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 
 public class ModuleWeaver : BaseModuleWeaver
 {
@@ -17,8 +17,7 @@ public class ModuleWeaver : BaseModuleWeaver
     private const string GetCommandMethodNameFormat = "get_{0}";
     private const string CommandMethodNameFormat = "{0}Command";
 
-    private string _canExecuteMethodPattern;
-    private TypeReference _delegateCommandType;
+    private WeaverConfig _config;
 
     public override IEnumerable<string> GetAssembliesForScanning()
     {
@@ -27,56 +26,36 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
-        _canExecuteMethodPattern = Config.Attribute("CanExecuteMethodPattern")?.Value ?? "Can{0}";
-
-        if (!IsValidMethodPattern(_canExecuteMethodPattern))
-        {
-            throw new WeavingException($"The CanExecuteMethodPattern parameter '{_canExecuteMethodPattern}' is incorrectly formatted. The pattern should start with a letter or an underscore, followed by any combination of letters, digits, or underscores, and contain the '{{0}}' placeholder exactly once. Please review your configuration and ensure the correct pattern is used.");
-        }
-
-        _delegateCommandType = ModuleDefinition.ImportReference("Prism.Commands.DelegateCommand", "Prism");
+        _config = new WeaverConfig(ModuleDefinition, Config);
 
         foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
         {
-            RemoveDelegateCommandAttribute(method);
-
-            var commandField = CreateBackingFieldForCommand(method);
-            AddAttributesToBackingField(commandField);
-            AddBackingFieldToType(method.DeclaringType, commandField);
-
-            var canExecuteMethod = FindCanExecuteMethod(method);
-
-            MethodDefinition delegateCommandCtor;
-
-            if (canExecuteMethod != null)
-            {
-                delegateCommandCtor = FindDelegateCommandConstructor(true);
-            }
-            else
-            {
-                delegateCommandCtor = FindDelegateCommandConstructor(false);
-            }
-
-            var commandProperty = CreateCommandProperty(method, commandField);
-
-            UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
-
-            method.DeclaringType.Properties.Add(commandProperty);
-            method.DeclaringType.Methods.Add(commandProperty.GetMethod);
-            MakeMethodPrivate(method);
+            TransformMethodToDelegateCommand(method);
         }
     }
 
-    private bool IsValidMethodPattern(string pattern)
+    private void TransformMethodToDelegateCommand(MethodDefinition method)
     {
-        var regex = new Regex(@"^[\p{L}_][\p{L}\p{N}_]*\{0\}[\p{L}\p{N}_]*$", RegexOptions.Compiled);
-        
-        return regex.IsMatch(pattern);
+        RemoveDelegateCommandAttribute(method);
+
+        var commandField = CreateBackingFieldForCommand(method);
+        AddAttributesToBackingField(commandField);
+        AddBackingFieldToType(method.DeclaringType, commandField);
+
+        var canExecuteMethod = FindCanExecuteMethod(method);
+        var delegateCommandCtor = FindDelegateCommandConstructor(canExecuteMethod != null);
+        var commandProperty = CreateCommandProperty(method, commandField);
+
+        UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
+
+        method.DeclaringType.Properties.Add(commandProperty);
+        method.DeclaringType.Methods.Add(commandProperty.GetMethod);
+        MakeMethodPrivate(method);
     }
 
     private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
     {
-        var canExecuteMethodName = string.Format(_canExecuteMethodPattern, method.Name);
+        var canExecuteMethodName = string.Format(_config.CanExecuteMethodPattern, method.Name);
 
         return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == canExecuteMethodName && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
     }
@@ -91,7 +70,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         var commandMethodName = string.Format(CommandMethodNameFormat, method.Name);
         var commandFieldName = string.Format(CommandBackingFieldNameFormat, commandMethodName);
-        var commandFieldType = _delegateCommandType;
+        var commandFieldType = _config.DelegateCommandType;
 
         return new FieldDefinition(commandFieldName, FieldAttributes.Private | FieldAttributes.InitOnly, commandFieldType);
     }
@@ -109,33 +88,31 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private MethodDefinition FindDelegateCommandConstructor(bool hasCanExecuteMethod)
     {
-        var delegateCommandConstructors = _delegateCommandType.Resolve().GetConstructors();
+        var delegateCommandConstructors = _config.DelegateCommandType.Resolve().GetConstructors();
 
-        MethodDefinition delegateCommandCtor;
+        var delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => MatchesDelegateCommandConstructor(m, hasCanExecuteMethod));
+
+        return delegateCommandCtor ?? throw new WeavingException($"Unable to find DelegateCommand constructor {(hasCanExecuteMethod ? "with two parameters of types Action and Func`1<Boolean>" : "with a single parameter of type Action")}. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
+    }
+
+    private bool MatchesDelegateCommandConstructor(MethodDefinition constructor, bool hasCanExecuteMethod)
+    {
+        if (constructor.Parameters[0].ParameterType.FullName != typeof(Action).FullName)
+        {
+            return false;
+        }
 
         if (hasCanExecuteMethod)
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m =>
-                m.Parameters.Count == 2 &&
-                m.Parameters[0].ParameterType.FullName == typeof(Action).FullName &&
-                m.Parameters[1].ParameterType.IsGenericInstance &&
-                m.Parameters[1].ParameterType.GetElementType().FullName == typeof(Func<>).FullName &&
-                ((GenericInstanceType)m.Parameters[1].ParameterType).GenericArguments[0].MetadataType == MetadataType.Boolean
-            );
+            return constructor.Parameters.Count == 2 &&
+                   constructor.Parameters[1].ParameterType.IsGenericInstance &&
+                   constructor.Parameters[1].ParameterType.GetElementType().FullName == typeof(Func<>).FullName &&
+                   ((GenericInstanceType)constructor.Parameters[1].ParameterType).GenericArguments[0].MetadataType == MetadataType.Boolean;
         }
         else
         {
-            delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m =>
-                m.Parameters.Count == 1 &&
-                m.Parameters[0].ParameterType.FullName == typeof(Action).FullName);
+            return constructor.Parameters.Count == 1;
         }
-
-        if (delegateCommandCtor == null)
-        {
-            throw new WeavingException($"Unable to find DelegateCommand constructor {(hasCanExecuteMethod ? "with two parameters of types Action and Func`1<Boolean>" : "with a single parameter of type Action")}. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
-        }
-
-        return delegateCommandCtor;
     }
 
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
