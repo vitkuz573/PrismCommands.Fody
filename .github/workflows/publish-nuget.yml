@@ -37,7 +37,7 @@ jobs:
         run: |
           $Version = $Env:GITHUB_REF -replace 'refs/tags/', ''
           echo "VERSION=$Version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "::debug::Extracted version: $Version"
+          Write-Host "Extracted version: $Version"
 
       - name: Build solution
         run: dotnet build --configuration Release --no-restore /p:PackageVersion=${{ env.VERSION }} /p:PackageOutputPath="${{ env.GITHUB_WORKSPACE }}\nugets"
@@ -51,9 +51,9 @@ jobs:
             Write-Error "nupkg file not found"
             exit 1
           }
-          Write-Host "::debug::Found nupkg file at path: $nupkgPath"
+          Write-Host "Found nupkg file at path: $nupkgPath"
           dotnet nuget push $nupkgPath --api-key ${{ secrets.NUGET_API_KEY }} --source ${{ env.NUGET_API_SOURCE }}
-          Write-Host "::debug::Published nupkg file to NuGet"
+          Write-Host "Published nupkg file to NuGet"
 
       - name: Attach nupkg file to release
         shell: pwsh
@@ -67,8 +67,8 @@ jobs:
             "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}"
             "Content-Type" = "application/octet-stream"
           }
-          Write-Host "::debug::Upload URL: $uploadUrl"
-          Write-Host "::debug::nupkg name: $nupkgName"
-          Write-Host "::debug::File to upload: $nupkgPath"
+          Write-Host "Upload URL: $uploadUrl"
+          Write-Host "nupkg name: $nupkgName"
+          Write-Host "File to upload: $nupkgPath"
           Invoke-WebRequest -Uri $uploadUrl -Headers $headers -InFile $nupkgPath -Method 'POST'
-          Write-Host "::debug::Attached nupkg file to release"
+          Write-Host "Attached nupkg file to release"
