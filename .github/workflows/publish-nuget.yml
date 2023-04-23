@@ -45,7 +45,7 @@ jobs:
           Write-Host "Built solution with version: ${{ env.VERSION }}"
 
       - name: Find and publish nupkg file
-        if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
+        if: ${{ secrets.PUBLISH_TO_NUGET == 'true' }}
         shell: pwsh
         run: |
           $nupkgPath = (Get-ChildItem -Path "${{ env.GITHUB_WORKSPACE }}\nugets" -Filter *.nupkg -Recurse).FullName
