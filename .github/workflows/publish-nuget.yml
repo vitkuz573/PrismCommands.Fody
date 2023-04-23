@@ -9,6 +9,7 @@ env:
   DOTNET_VERSION: '7.0.x'
   VS_VERSION: '17.0'
   NUGET_API_SOURCE: 'https://api.nuget.org/v3/index.json'
+  PUBLISH_TO_NUGET: ${{ secrets.PUBLISH_TO_NUGET }}
 
 jobs:
   build:
@@ -43,10 +44,6 @@ jobs:
         run: |
           dotnet build --configuration Release --no-restore /p:PackageVersion=${{ env.VERSION }} /p:PackageOutputPath="${{ env.GITHUB_WORKSPACE }}\nugets"
           Write-Host "Built solution with version: ${{ env.VERSION }}"
-
-      - name: Set PUBLISH_TO_NUGET environment variable
-        id: set_publish_to_nuget
-        run: echo "PUBLISH_TO_NUGET=${{ secrets.PUBLISH_TO_NUGET }}" >> $GITHUB_ENV
 
       - name: Find and publish nupkg file
         if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
