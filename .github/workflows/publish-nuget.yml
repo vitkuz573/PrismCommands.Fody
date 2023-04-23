@@ -44,8 +44,12 @@ jobs:
           dotnet build --configuration Release --no-restore /p:PackageVersion=${{ env.VERSION }} /p:PackageOutputPath="${{ env.GITHUB_WORKSPACE }}\nugets"
           Write-Host "Built solution with version: ${{ env.VERSION }}"
 
+      - name: Set PUBLISH_TO_NUGET environment variable
+        id: set_publish_to_nuget
+        run: echo "PUBLISH_TO_NUGET=${{ secrets.PUBLISH_TO_NUGET }}" >> $GITHUB_ENV
+
       - name: Find and publish nupkg file
-        if: ${{ secrets.PUBLISH_TO_NUGET == 'true' }}
+        if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
         shell: pwsh
         run: |
           $nupkgPath = (Get-ChildItem -Path "${{ env.GITHUB_WORKSPACE }}\nugets" -Filter *.nupkg -Recurse).FullName
