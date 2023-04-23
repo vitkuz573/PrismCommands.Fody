@@ -7,12 +7,11 @@
     <Description>Fody plugin to simplify the use of DelegateCommand in Prism</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>Prism, DelegateCommand, ILWeaving, Fody, Cecil, AOP</PackageTags>
-    <PackageOutputPath>$(SolutionDir)../nugets</PackageOutputPath>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\nugets</PackageOutputPath>
     <PackageProjectUrl>https://github.com/vitkuz573/PrismCommands.Fody</PackageProjectUrl>
     <LangVersion>latest</LangVersion>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>Key.snk</AssemblyOriginatorKeyFile>
-    <Version>2.0.1</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/vitkuz573/PrismCommands.Fody</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

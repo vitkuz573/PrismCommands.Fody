@@ -10,44 +10,70 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v1
-      with:
-        dotnet-version: '7.0.x'
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '7.0.x'
 
-    - name: Setup MSBuild and .NET Framework Developer Pack
-      uses: microsoft/setup-msbuild@v1
-      with:
-        vs-version: '17.0'
-        dotnet-framework-version: '4.5.2'
+      - name: Setup MSBuild and .NET Framework Developer Pack
+        uses: microsoft/setup-msbuild@v1
+        with:
+          vs-version: '17.0'
 
-    - name: Restore dependencies
-      run: dotnet restore
+      - name: Restore dependencies
+        run: dotnet restore
 
-    - name: Build solution
-      run: dotnet build --configuration Release --no-restore
+      - name: Extract version from tag
+        id: get_version
+        shell: pwsh
+        run: |
+          $Version = $Env:GITHUB_REF -replace 'refs/tags/', ''
+          echo "VERSION=$Version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-    - name: Publish NuGet package
-      run: dotnet nuget push ../nugets/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      - name: Build solution
+        run: dotnet build --configuration Release --no-restore /p:PackageVersion=${{ env.VERSION }} /p:PackageOutputPath="${{ env.GITHUB_WORKSPACE }}\nugets"
 
-    - name: Get release info
-      id: release
-      run: |
-        echo "RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases | jq '.[] | select(.tag_name=="${{ github.ref }}") | .id')" >> $GITHUB_ENV
-        echo "UPLOAD_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases | jq -r '.[] | select(.tag_name=="${{ github.ref }}") | .upload_url')" >> $GITHUB_ENV
+      - name: Find nupkg file
+        id: find_nupkg
+        shell: pwsh
+        run: |
+          $nupkgPath = (Get-ChildItem -Path "${{ env.GITHUB_WORKSPACE }}\nugets" -Filter *.nupkg -Recurse).FullName
+          if (!$nupkgPath) {
+            Write-Error "nupkg file not found"
+            exit 1
+          }
+          Write-Host "Found nupkg file at path: $nupkgPath"
+          echo "NUPKG_PATH=$nupkgPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-    - name: Upload nupkg as release asset
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        nupkg_path=$(ls ../nugets/*.nupkg)
-        asset_name=$(basename $nupkg_path)
-        curl \
-          -X POST \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Content-Type: application/octet-stream" \
-          --data-binary "@${nupkg_path}" \
-          "${UPLOAD_URL}?name=${asset_name}"
+      - name: Publish NuGet package
+        if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
+        run: dotnet nuget push "${{ env.NUPKG_PATH }}" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+
+      - name: Get release info
+        id: release
+        shell: pwsh
+        run: |
+          $tag = $Env:GITHUB_REF -replace 'refs/tags/', ''
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag" -Headers @{ "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}" }
+          $upload_url = $release.upload_url
+          echo "RELEASE_ID=$($release.id)" >> $env:GITHUB_ENV
+          echo "UPLOAD_URL=$upload_url" >> $env:GITHUB_ENV
+
+      - name: Attach nupkg file to release
+        env:
+          FILE_TO_UPLOAD: ${{ env.NUPKG_PATH }}
+        shell: pwsh
+        run: |
+          $nupkgName = (Split-Path -Path $env:NUPKG_PATH -Leaf)
+          $uploadUrl = $env:UPLOAD_URL -replace '{\?name,label}', "?name=$nupkgName"
+          $headers = @{
+            "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}"
+            "Content-Type" = "application/octet-stream"
+          }
+          Write-Host "Upload URL: $uploadUrl"
+          Write-Host "nupkg name: $nupkgName"
+          Write-Host "File to upload: $env:FILE_TO_UPLOAD"
+          Invoke-WebRequest -Uri $uploadUrl -Headers $headers -InFile $env:FILE_TO_UPLOAD -Method 'POST'
