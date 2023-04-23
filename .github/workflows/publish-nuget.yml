@@ -5,6 +5,11 @@ on:
     types:
       - published
 
+env:
+  DOTNET_VERSION: '7.0.x'
+  VS_VERSION: '17.0'
+  NUGET_API_SOURCE: 'https://api.nuget.org/v3/index.json'
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,12 +21,12 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v1
         with:
-          dotnet-version: '7.0.x'
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Setup MSBuild and .NET Framework Developer Pack
         uses: microsoft/setup-msbuild@v1
         with:
-          vs-version: '17.0'
+          vs-version: ${{ env.VS_VERSION }}
 
       - name: Restore dependencies
         run: dotnet restore
@@ -32,12 +37,13 @@ jobs:
         run: |
           $Version = $Env:GITHUB_REF -replace 'refs/tags/', ''
           echo "VERSION=$Version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "::debug::Extracted version: $Version"
 
       - name: Build solution
         run: dotnet build --configuration Release --no-restore /p:PackageVersion=${{ env.VERSION }} /p:PackageOutputPath="${{ env.GITHUB_WORKSPACE }}\nugets"
 
-      - name: Find nupkg file
-        id: find_nupkg
+      - name: Find and publish nupkg file
+        if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
         shell: pwsh
         run: |
           $nupkgPath = (Get-ChildItem -Path "${{ env.GITHUB_WORKSPACE }}\nugets" -Filter *.nupkg -Recurse).FullName
@@ -45,35 +51,24 @@ jobs:
             Write-Error "nupkg file not found"
             exit 1
           }
-          Write-Host "Found nupkg file at path: $nupkgPath"
-          echo "NUPKG_PATH=$nupkgPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Publish NuGet package
-        if: ${{ env.PUBLISH_TO_NUGET == 'true' }}
-        run: dotnet nuget push "${{ env.NUPKG_PATH }}" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
-
-      - name: Get release info
-        id: release
-        shell: pwsh
-        run: |
-          $tag = $Env:GITHUB_REF -replace 'refs/tags/', ''
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag" -Headers @{ "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}" }
-          $upload_url = $release.upload_url
-          echo "RELEASE_ID=$($release.id)" >> $env:GITHUB_ENV
-          echo "UPLOAD_URL=$upload_url" >> $env:GITHUB_ENV
+          Write-Host "::debug::Found nupkg file at path: $nupkgPath"
+          dotnet nuget push $nupkgPath --api-key ${{ secrets.NUGET_API_KEY }} --source ${{ env.NUGET_API_SOURCE }}
+          Write-Host "::debug::Published nupkg file to NuGet"
 
       - name: Attach nupkg file to release
-        env:
-          FILE_TO_UPLOAD: ${{ env.NUPKG_PATH }}
         shell: pwsh
         run: |
-          $nupkgName = (Split-Path -Path $env:NUPKG_PATH -Leaf)
-          $uploadUrl = $env:UPLOAD_URL -replace '{\?name,label}', "?name=$nupkgName"
+          $nupkgPath = (Get-ChildItem -Path "${{ env.GITHUB_WORKSPACE }}\nugets" -Filter *.nupkg -Recurse).FullName
+          $nupkgName = (Split-Path -Path $nupkgPath -Leaf)
+          $tag = $Env:GITHUB_REF -replace 'refs/tags/', ''
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag" -Headers @{ "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}" }
+          $uploadUrl = $release.upload_url -replace '{\?name,label}', "?name=$nupkgName"
           $headers = @{
             "Authorization" = "token ${{ secrets.GH_PERSONAL_TOKEN }}"
             "Content-Type" = "application/octet-stream"
           }
-          Write-Host "Upload URL: $uploadUrl"
-          Write-Host "nupkg name: $nupkgName"
-          Write-Host "File to upload: $env:FILE_TO_UPLOAD"
-          Invoke-WebRequest -Uri $uploadUrl -Headers $headers -InFile $env:FILE_TO_UPLOAD -Method 'POST'
+          Write-Host "::debug::Upload URL: $uploadUrl"
+          Write-Host "::debug::nupkg name: $nupkgName"
+          Write-Host "::debug::File to upload: $nupkgPath"
+          Invoke-WebRequest -Uri $uploadUrl -Headers $headers -InFile $nupkgPath -Method 'POST'
+          Write-Host "::debug::Attached nupkg file to release"
