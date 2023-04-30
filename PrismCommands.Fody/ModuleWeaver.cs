@@ -26,24 +26,46 @@ public class ModuleWeaver : BaseModuleWeaver
 
     public override void Execute()
     {
+        var stopwatch = new Stopwatch();
+        stopwatch.Start();
+
         _config = new WeaverConfig(ModuleDefinition, Config);
 
-        foreach (var method in ModuleDefinition.Types.SelectMany(type => type.Methods.Where(m => m.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName)).ToList()))
+        foreach (var type in ModuleDefinition.Types)
         {
-            TransformMethodToDelegateCommand(method);
+            var methodsToTransform = new List<MethodDefinition>();
+
+            foreach (var method in type.Methods)
+            {
+                if (method.CustomAttributes.Any(a => a.AttributeType.Name == DelegateCommandAttributeName))
+                {
+                    methodsToTransform.Add(method);
+                }
+            }
+
+            foreach (var method in methodsToTransform)
+            {
+                TransformMethodToDelegateCommand(method);
+            }
         }
+
+        stopwatch.Stop();
+        WriteMessage($"Weaving took {stopwatch.ElapsedMilliseconds} milliseconds.", MessageImportance.High);
     }
 
     private void TransformMethodToDelegateCommand(MethodDefinition method)
     {
+        var stopwatch = new Stopwatch();
+        stopwatch.Start();
+
         RemoveDelegateCommandAttribute(method);
 
         var commandField = CreateBackingFieldForCommand(method);
         AddAttributesToBackingField(commandField);
         AddBackingFieldToType(method.DeclaringType, commandField);
 
-        var canExecuteMethod = FindCanExecuteMethod(method);
-        var delegateCommandCtor = FindDelegateCommandConstructor(canExecuteMethod != null);
+        var canExecuteMethod = GetCanExecuteMethodLazy(method);
+        var delegateCommandCtor = FindDelegateCommandConstructor(canExecuteMethod?.Value != null);
         var commandProperty = CreateCommandProperty(method, commandField);
 
         UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
@@ -51,6 +73,9 @@ public class ModuleWeaver : BaseModuleWeaver
         method.DeclaringType.Properties.Add(commandProperty);
         method.DeclaringType.Methods.Add(commandProperty.GetMethod);
         MakeMethodPrivate(method);
+
+        stopwatch.Stop();
+        WriteMessage($"Transforming '{method.FullName}' took {stopwatch.ElapsedMilliseconds} milliseconds.", MessageImportance.High);
     }
 
     private MethodDefinition FindCanExecuteMethod(MethodDefinition method)
@@ -58,6 +83,11 @@ public class ModuleWeaver : BaseModuleWeaver
         var canExecuteMethodName = string.Format(_config.CanExecuteMethodPattern, method.Name);
 
         return method.DeclaringType.Methods.FirstOrDefault(m => m.Name == canExecuteMethodName && m.ReturnType.MetadataType == MetadataType.Boolean && !m.HasParameters);
+    }
+
+    private Lazy<MethodDefinition> GetCanExecuteMethodLazy(MethodDefinition method)
+    {
+        return new Lazy<MethodDefinition>(() => FindCanExecuteMethod(method));
     }
 
     private void RemoveDelegateCommandAttribute(MethodDefinition method)
@@ -141,7 +171,7 @@ public class ModuleWeaver : BaseModuleWeaver
         return commandProperty;
     }
 
-    private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor, MethodDefinition canExecuteMethod = null)
+    private void UpdateConstructor(TypeDefinition type, MethodDefinition method, FieldDefinition commandField, MethodDefinition delegateCommandCtor, Lazy<MethodDefinition> canExecuteMethodLazy = null)
     {
         var ctor = type.GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Failed to find or generate a default constructor for the type '{type.FullName}'. This is an unexpected error. Please ensure the proper project setup and verify the generated code.");
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"The constructor '{ctor.FullName}' is missing a return instruction (ret). Please verify the constructor implementation to ensure proper weaving.");
@@ -149,9 +179,14 @@ public class ModuleWeaver : BaseModuleWeaver
 
         InsertActionInstructions(ilCtor, lastRetInstruction, method, GetActionConstructor());
 
-        if (canExecuteMethod != null)
+        if (canExecuteMethodLazy?.IsValueCreated ?? false)
         {
-            InsertFuncInstructions(ilCtor, lastRetInstruction, canExecuteMethod, GetFuncConstructor());
+            var canExecuteMethod = canExecuteMethodLazy.Value;
+
+            if (canExecuteMethod != null)
+            {
+                InsertFuncInstructions(ilCtor, lastRetInstruction, canExecuteMethod, GetFuncConstructor());
+            }
         }
 
         InsertDelegateCommandInstructions(ilCtor, lastRetInstruction, commandField, delegateCommandCtor);
