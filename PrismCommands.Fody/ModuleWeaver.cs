@@ -18,6 +18,7 @@ public class ModuleWeaver : BaseModuleWeaver
     private const string CommandMethodNameFormat = "{0}Command";
 
     private WeaverConfig _config;
+    private ConstructorCache _constructorCache;
 
     public override IEnumerable<string> GetAssembliesForScanning()
     {
@@ -30,6 +31,7 @@ public class ModuleWeaver : BaseModuleWeaver
         stopwatch.Start();
 
         _config = new WeaverConfig(ModuleDefinition, Config);
+        _constructorCache = new ConstructorCache(ModuleDefinition);
 
         foreach (var type in ModuleDefinition.Types)
         {
@@ -65,7 +67,7 @@ public class ModuleWeaver : BaseModuleWeaver
         AddBackingFieldToType(method.DeclaringType, commandField);
 
         var canExecuteMethod = GetCanExecuteMethodLazy(method);
-        var delegateCommandCtor = FindDelegateCommandConstructor(canExecuteMethod?.Value != null);
+        var delegateCommandCtor = _constructorCache.GetDelegateCommandConstructor(_config, canExecuteMethod?.Value != null);
         var commandProperty = CreateCommandProperty(method, commandField);
 
         UpdateConstructor(method.DeclaringType, method, commandField, delegateCommandCtor, canExecuteMethod);
@@ -116,35 +118,6 @@ public class ModuleWeaver : BaseModuleWeaver
         type.Fields.Add(commandField);
     }
 
-    private MethodDefinition FindDelegateCommandConstructor(bool hasCanExecuteMethod)
-    {
-        var delegateCommandConstructors = _config.DelegateCommandType.Resolve().GetConstructors();
-
-        var delegateCommandCtor = delegateCommandConstructors.FirstOrDefault(m => MatchesDelegateCommandConstructor(m, hasCanExecuteMethod));
-
-        return delegateCommandCtor ?? throw new WeavingException($"Unable to find DelegateCommand constructor {(hasCanExecuteMethod ? "with two parameters of types Action and Func`1<Boolean>" : "with a single parameter of type Action")}. Available constructors: {string.Join(", ", delegateCommandConstructors.Select(c => c.ToString()))}");
-    }
-
-    private bool MatchesDelegateCommandConstructor(MethodDefinition constructor, bool hasCanExecuteMethod)
-    {
-        if (constructor.Parameters[0].ParameterType.FullName != typeof(Action).FullName)
-        {
-            return false;
-        }
-
-        if (hasCanExecuteMethod)
-        {
-            return constructor.Parameters.Count == 2 &&
-                   constructor.Parameters[1].ParameterType.IsGenericInstance &&
-                   constructor.Parameters[1].ParameterType.GetElementType().FullName == typeof(Func<>).FullName &&
-                   ((GenericInstanceType)constructor.Parameters[1].ParameterType).GenericArguments[0].MetadataType == MetadataType.Boolean;
-        }
-        else
-        {
-            return constructor.Parameters.Count == 1;
-        }
-    }
-
     private PropertyDefinition CreateCommandProperty(MethodDefinition method, FieldDefinition commandField)
     {
         var commandMethodName = string.Format(CommandMethodNameFormat, method.Name);
@@ -177,7 +150,7 @@ public class ModuleWeaver : BaseModuleWeaver
         var lastRetInstruction = ctor.Body.Instructions.LastOrDefault(i => i.OpCode == OpCodes.Ret) ?? throw new WeavingException($"The constructor '{ctor.FullName}' is missing a return instruction (ret). Please verify the constructor implementation to ensure proper weaving.");
         var ilCtor = ctor.Body.GetILProcessor();
 
-        InsertActionInstructions(ilCtor, lastRetInstruction, method, GetActionConstructor());
+        InsertActionInstructions(ilCtor, lastRetInstruction, method, _constructorCache.GetActionConstructor());
 
         if (canExecuteMethodLazy?.IsValueCreated ?? false)
         {
@@ -185,7 +158,7 @@ public class ModuleWeaver : BaseModuleWeaver
 
             if (canExecuteMethod != null)
             {
-                InsertFuncInstructions(ilCtor, lastRetInstruction, canExecuteMethod, GetFuncConstructor());
+                InsertFuncInstructions(ilCtor, lastRetInstruction, canExecuteMethod, _constructorCache.GetFuncConstructor());
             }
         }
 
@@ -212,36 +185,6 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Newobj, ModuleDefinition.ImportReference(delegateCommandCtor)));
         ilCtor.InsertBefore(lastRetInstruction, Instruction.Create(OpCodes.Stfld, commandField));
-    }
-
-    private MethodReference GetActionConstructor()
-    {
-        var actionType = ModuleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
-        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
-
-        return ModuleDefinition.ImportReference(actionConstructorInfo);
-    }
-
-    private MethodReference GetFuncConstructor()
-    {
-        var openFuncType = ModuleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
-        var boolType = ModuleDefinition.TypeSystem.Boolean;
-        var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
-        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
-
-        var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
-        {
-            CallingConvention = openFuncConstructorInfo.CallingConvention,
-            HasThis = openFuncConstructorInfo.HasThis,
-            ExplicitThis = openFuncConstructorInfo.ExplicitThis
-        };
-
-        foreach (var parameter in openFuncConstructorInfo.Parameters)
-        {
-            closedFuncConstructorInfo.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
-        }
-
-        return ModuleDefinition.ImportReference(closedFuncConstructorInfo);
     }
 
     private void MakeMethodPrivate(MethodDefinition method)
