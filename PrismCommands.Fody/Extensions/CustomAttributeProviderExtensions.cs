@@ -8,9 +8,9 @@ namespace PrismCommands.Fody.Extensions;
 
 public static class CustomAttributeProviderExtensions
 {
-    public static void AddAttribute<T>(this ICustomAttributeProvider provider, ModuleDefinition moduleDefinition, string assemblyName, params object[] constructorArgs) where T : Attribute
+    public static void AddAttribute<TAttribute>(this ICustomAttributeProvider provider, ModuleDefinition moduleDefinition, string assemblyName, params object[] constructorArgs) where TAttribute : Attribute
     {
-        var attributeType = moduleDefinition.ImportReference(typeof(T).FullName, assemblyName);
+        var attributeType = moduleDefinition.ImportReference(typeof(TAttribute).FullName, assemblyName);
         var ctor = attributeType.Resolve().GetConstructors().FirstOrDefault() ?? throw new WeavingException($"Unable to find a constructor for attribute '{attributeType.FullName}'.");
         var attribute = new CustomAttribute(moduleDefinition.ImportReference(ctor));
 
