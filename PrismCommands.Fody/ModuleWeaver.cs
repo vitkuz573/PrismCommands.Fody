@@ -4,15 +4,25 @@ using PrismCommands.Fody;
 using System.Collections.Generic;
 using System.Linq;
 
+/// <summary>
+/// Represents a module weaver that is used to modify the compiled code by injecting Prism DelegateCommand functionality.
+/// </summary>
 public class ModuleWeaver : BaseModuleWeaver
 {
     private DelegateCommandTransformer _delegateCommandTransformer;
 
+    /// <summary>
+    /// Gets the assemblies for scanning.
+    /// </summary>
+    /// <returns>An enumerable containing the assembly names.</returns>
     public override IEnumerable<string> GetAssembliesForScanning()
     {
         yield return "Prism";
     }
 
+    /// <summary>
+    /// Executes the weaving process, transforming the code as needed.
+    /// </summary>
     public override void Execute()
     {
         _delegateCommandTransformer = new DelegateCommandTransformer(ModuleDefinition, Config);
@@ -36,5 +46,8 @@ public class ModuleWeaver : BaseModuleWeaver
         }
     }
 
+    /// <summary>
+    /// Gets a value indicating whether to clean the reference.
+    /// </summary>
     public override bool ShouldCleanReference => true;
 }
