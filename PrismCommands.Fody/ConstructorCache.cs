@@ -69,7 +69,7 @@ public class ConstructorCache
     /// <returns>The Action constructor reference.</returns>
     private MethodReference FindActionConstructor(ModuleDefinition moduleDefinition)
     {
-        var actionType = moduleDefinition.ImportReference(typeof(Action).FullName, "System.Runtime");
+        var actionType = moduleDefinition.ImportReference(typeof(Action).FullName);
         var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
 
         return moduleDefinition.ImportReference(actionConstructorInfo);
@@ -82,7 +82,7 @@ public class ConstructorCache
     /// <returns>The Func constructor reference.</returns>
     private MethodReference FindFuncConstructor(ModuleDefinition moduleDefinition)
     {
-        var openFuncType = moduleDefinition.ImportReference(typeof(Func<>).FullName, "System.Runtime");
+        var openFuncType = moduleDefinition.ImportReference(typeof(Func<>).FullName);
         var boolType = moduleDefinition.TypeSystem.Boolean;
         var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
         var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
