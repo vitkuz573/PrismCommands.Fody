@@ -14,33 +14,24 @@ namespace PrismCommands.Fody;
 /// <summary>
 /// Transforms the methods marked with the DelegateCommandAttribute into DelegateCommands.
 /// </summary>
-public class DelegateCommandTransformer
+/// <remarks>
+/// Initializes a new instance of the <see cref="DelegateCommandTransformer"/> class.
+/// </remarks>
+/// <param name="moduleDefinition">The module definition to be used in the configuration.</param>
+/// <param name="config">The XML configuration element.</param>
+public class DelegateCommandTransformer(ModuleDefinition moduleDefinition, XElement config)
 {
     private const string CommandBackingFieldNameFormat = "<{0}>k__BackingField";
     private const string GetCommandMethodNameFormat = "get_{0}";
     private const string CommandMethodNameFormat = "{0}Command";
 
-    private readonly WeaverConfig _config;
-    private readonly ConstructorCache _constructorCache;
-    private readonly ModuleDefinition _moduleDefinition;
+    private readonly WeaverConfig _config = new(moduleDefinition, config);
+    private readonly ConstructorCache _constructorCache = new(moduleDefinition);
 
     /// <summary>
     /// Gets the name of the DelegateCommandAttribute.
     /// </summary>
     public string AttributeName { get; } = "DelegateCommandAttribute";
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="DelegateCommandTransformer"/> class.
-    /// </summary>
-    /// <param name="moduleDefinition">The module definition to be used in the configuration.</param>
-    /// <param name="config">The XML configuration element.</param>
-    public DelegateCommandTransformer(ModuleDefinition moduleDefinition, XElement config)
-    {
-        _moduleDefinition = moduleDefinition;
-
-        _config = new WeaverConfig(moduleDefinition, config);
-        _constructorCache = new ConstructorCache(moduleDefinition);
-    }
 
     /// <summary>
     /// Transforms the specified method into a DelegateCommand.
@@ -95,8 +86,8 @@ public class DelegateCommandTransformer
     /// <param name="commandField">The backing field to add attributes to.</param>
     private void AddAttributesToBackingField(FieldDefinition commandField)
     {
-        commandField.AddAttribute<CompilerGeneratedAttribute>(_moduleDefinition, "System.Runtime");
-        commandField.AddAttribute<DebuggerBrowsableAttribute>(_moduleDefinition, "System.Runtime", DebuggerBrowsableState.Never);
+        commandField.AddAttribute<CompilerGeneratedAttribute>(moduleDefinition);
+        commandField.AddAttribute<DebuggerBrowsableAttribute>(moduleDefinition, DebuggerBrowsableState.Never);
     }
 
     /// <summary>
@@ -158,7 +149,7 @@ public class DelegateCommandTransformer
             }
         };
 
-        commandProperty.GetMethod.AddAttribute<CompilerGeneratedAttribute>(_moduleDefinition, "System.Runtime");
+        commandProperty.GetMethod.AddAttribute<CompilerGeneratedAttribute>(moduleDefinition);
 
         return commandProperty;
     }
@@ -203,7 +194,7 @@ public class DelegateCommandTransformer
 
         var delegateCommandInstructions = new List<Instruction>
         {
-            Instruction.Create(OpCodes.Newobj, _moduleDefinition.ImportReference(delegateCommandCtor)),
+            Instruction.Create(OpCodes.Newobj, moduleDefinition.ImportReference(delegateCommandCtor)),
             Instruction.Create(OpCodes.Stfld, commandField)
         };
 

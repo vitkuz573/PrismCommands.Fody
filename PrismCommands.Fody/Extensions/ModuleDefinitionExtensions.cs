@@ -18,7 +18,7 @@ public static class ModuleDefinitionExtensions
         }
         else
         {
-            string[] possibleAssemblies = new[] { "System.Runtime", "mscorlib" };
+            string[] possibleAssemblies = ["System.Runtime", "mscorlib"];
 
             foreach (var possibleAssemblyName in possibleAssemblies)
             {

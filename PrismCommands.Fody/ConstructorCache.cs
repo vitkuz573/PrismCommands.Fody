@@ -10,22 +10,16 @@ using System.Linq;
 /// <summary>
 /// Represents a cache for constructors used during the weaving process.
 /// </summary>
-public class ConstructorCache
+/// <remarks>
+/// Initializes a new instance of the <see cref="ConstructorCache"/> class.
+/// </remarks>
+/// <param name="moduleDefinition">The module definition to be used in the constructor cache.</param>
+public class ConstructorCache(ModuleDefinition moduleDefinition)
 {
-    private readonly Dictionary<bool, MethodDefinition> _delegateCommandConstructors;
-    private readonly ModuleDefinition _moduleDefinition;
+    private readonly Dictionary<bool, MethodDefinition> _delegateCommandConstructors = [];
+    
     private MethodReference _actionConstructor;
     private MethodReference _funcConstructor;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ConstructorCache"/> class.
-    /// </summary>
-    /// <param name="moduleDefinition">The module definition to be used in the constructor cache.</param>
-    public ConstructorCache(ModuleDefinition moduleDefinition)
-    {
-        _delegateCommandConstructors = new Dictionary<bool, MethodDefinition>();
-        _moduleDefinition = moduleDefinition;
-    }
 
     /// <summary>
     /// Gets the Action constructor reference.
@@ -33,7 +27,7 @@ public class ConstructorCache
     /// <returns>The Action constructor reference.</returns>
     public MethodReference GetActionConstructor()
     {
-        return _actionConstructor ??= FindActionConstructor(_moduleDefinition);
+        return _actionConstructor ??= FindActionConstructor(moduleDefinition);
     }
 
     /// <summary>
@@ -42,7 +36,7 @@ public class ConstructorCache
     /// <returns>The Func constructor reference.</returns>
     public MethodReference GetFuncConstructor()
     {
-        return _funcConstructor ??= FindFuncConstructor(_moduleDefinition);
+        return _funcConstructor ??= FindFuncConstructor(moduleDefinition);
     }
 
     /// <summary>
@@ -70,7 +64,7 @@ public class ConstructorCache
     private MethodReference FindActionConstructor(ModuleDefinition moduleDefinition)
     {
         var actionType = moduleDefinition.ImportReference(typeof(Action).FullName);
-        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required Action constructor with two parameters was not found in the type '{actionType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
+        var actionConstructorInfo = actionType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required constructor was not found in the expected types. Ensure that the proper versions of system assemblies like 'System.Runtime' or 'mscorlib' are referenced in your project.");
 
         return moduleDefinition.ImportReference(actionConstructorInfo);
     }
@@ -85,7 +79,7 @@ public class ConstructorCache
         var openFuncType = moduleDefinition.ImportReference(typeof(Func<>).FullName);
         var boolType = moduleDefinition.TypeSystem.Boolean;
         var closedFuncType = openFuncType.MakeGenericInstanceType(boolType);
-        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"Unable to find Func<> constructor with two parameters in the type '{openFuncType.FullName}'. Ensure that the proper version of the System.Runtime assembly is referenced in your project.");
+        var openFuncConstructorInfo = openFuncType.Resolve().GetConstructors().FirstOrDefault(c => c.Parameters.Count == 2 && c.Parameters[0].ParameterType.MetadataType == MetadataType.Object && c.Parameters[1].ParameterType.MetadataType == MetadataType.IntPtr) ?? throw new WeavingException($"The required constructor was not found in the expected types. Ensure that the proper versions of system assemblies like 'System.Runtime' or 'mscorlib' are referenced in your project.");
 
         var closedFuncConstructorInfo = new MethodReference(".ctor", openFuncConstructorInfo.ReturnType, closedFuncType)
         {
