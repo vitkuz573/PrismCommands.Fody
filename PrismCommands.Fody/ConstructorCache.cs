@@ -17,7 +17,7 @@ using System.Linq;
 public class ConstructorCache(ModuleDefinition moduleDefinition)
 {
     private readonly Dictionary<bool, MethodDefinition> _delegateCommandConstructors = [];
-    
+
     private MethodReference _actionConstructor;
     private MethodReference _funcConstructor;
 
